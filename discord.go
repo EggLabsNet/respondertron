@@ -479,7 +479,7 @@ func startDiscordBotConnection(discordConfig discordBot) {
 	// Initializing Discord connection
 
 	// Create a new Discord session using the provided bot token.
-	Log.Debugf("using token '%s' to auth", discordConfig.Config.Token)
+	Log.Debugf("using token '....%s' to auth", discordConfig.Config.Token[len(discordConfig.Config.Token)-4:])
 	botSession := session.New("Bot " + discordConfig.Config.Token)
 
 	// Add Gateway Intents
