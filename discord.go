@@ -167,44 +167,47 @@ func discordMessageHandler(botSession *session.Session, messageEvent *gateway.Me
 
 	Log.Debugf("checking for any urls in the message")
 	var allURLS []string
+ignore_check:
 	for _, url := range xurls.Relaxed().FindAllString(messageEvent.Content, -1) {
 		Log.Debugf("checking on %s", url)
-		// if the url is an ip filter it out
-		if match, err := regexp.Match("^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])", []byte(url)); err != nil {
-			Log.Error(err)
-		} else if match && !allowIP {
-			Log.Debugf("adding %s to the list", url)
-			continue
+
+		// Don't add a duplicate URL to the list
+		for _, existingURL := range allURLS {
+			if url == existingURL {
+				continue ignore_check
+			}
 		}
 
-		Log.Debugf("looking for ignored domains")
-		if len(getParsing("discord", botName, guildID, chanID).Paste.Ignore) == 0 {
-			Log.Debugf("appending %s to allURLS", url)
-			allURLS = append(allURLS, url)
-			Log.Debugf("no ignored domain found")
-			continue
-		} else {
-			var ignored bool
-			for _, ignoreURL := range getParsing("discord", botName, guildID, chanID).Paste.Ignore {
-				Log.Debugf("url should be ignored: %t", strings.HasPrefix(url, ignoreURL.URL))
-				if strings.HasPrefix(url, ignoreURL.URL) {
-					ignored = true
-					Log.Debugf("domain %s is being ignored.", ignoreURL.URL)
-					break
-				}
-			}
-			if ignored {
-			} else {
-				Log.Debugf("appending %s to allURLS", url)
-				allURLS = append(allURLS, url)
+		// If we don't allow IP addresses and the URL is an IP address, skip it
+		if !allowIP {
+			Log.Debugf("looking for IP addresses")
+			if match, err := regexp.Match("^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])", []byte(url)); err != nil {
+				Log.Error(err)
+			} else if match {
+				continue
 			}
 		}
+
+		// Skip any domains that are in the ignore list
+		Log.Debugf("looking for domain in ignored domains")
+		for _, ignoreURL := range getParsing("discord", botName, guildID, chanID).Paste.Ignore {
+			Log.Debugf("checking %s against %s", url, ignoreURL.URL)
+			if strings.HasPrefix(url, ignoreURL.URL) {
+				Log.Debugf("domain %s is being ignored.", ignoreURL.URL)
+				continue ignore_check
+			}
+		}
+
+		// No reason to exclude this URL, add it to the list
+		Log.Debugf("appending %s to allURLS", url)
+		allURLS = append(allURLS, url)
 	}
 
-	// add all urls together
+	// Add attachment URLs to the list of URLs to check
 	Log.Debug("adding attachment URLS to allURLS")
-	for i := 0; i < len(attachmentURLs); i++ {
-		allURLS = append(allURLS, attachmentURLs[i])
+	for _, url := range attachmentURLs {
+		Log.Debugf("appending attachment %s to allURLS", url)
+		allURLS = append(allURLS, url)
 	}
 
 	// Log.Debug(allURLS)
@@ -212,6 +215,7 @@ func discordMessageHandler(botSession *session.Session, messageEvent *gateway.Me
 	if len(messageEvent.Mentions) != 0 {
 		ping, mention := getMentions("discord", botName, guildID, chanID)
 
+		// Bot was pinged with no other text in the message
 		if messageEvent.Mentions[0].ID == botID && messageEvent.Content == fmt.Sprintf("<@%s>", botID.String()) {
 			Log.Debugf("bot was pinged")
 			response = ping.Response
@@ -225,6 +229,7 @@ func discordMessageHandler(botSession *session.Session, messageEvent *gateway.Me
 				}
 			}
 		}
+
 	} else {
 		Log.Debugf("no mentions found")
 		if strings.HasPrefix(messageEvent.Content, getPrefix("discord", botName, guildID)) {
